@@ -1,9 +1,9 @@
 # County Health Score
 
-An interactive map of a 0–10 health index for every U.S. county in 2023:
+An interactive map of a 0–10 health index for every U.S. county, 2010–2023:
 **https://nick-orvi.github.io/health_score/**
 
-Hover over or tap a county to see its score, national rank and domain scores. Zoom with the buttons, a trackpad pinch, Ctrl/⌘ + scroll, or double-click. Drag to pan.
+Pick a year from the dropdown (or use ← →). Hover over or tap a county to see its score, national rank, domain scores and 2010–2023 trend. Links like `#2015` open a specific year. Zoom with the buttons, a trackpad pinch, Ctrl/⌘ + scroll, or double-click. Drag to pan.
 
 ## What the score measures
 
