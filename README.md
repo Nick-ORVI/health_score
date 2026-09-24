@@ -1,4 +1,4 @@
-# County Health Score
+# Pillar of Prosperity: Health and Healthcare
 
 An interactive map of a 0–10 health index for every U.S. county, 2010–2023:
 **https://nick-orvi.github.io/health_score/**
