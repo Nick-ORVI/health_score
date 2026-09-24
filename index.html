@@ -207,14 +207,14 @@
         </div>
         <span>Year</span>
       </div>
-      <div class="stat"><b id="stat-median">&ndash;</b><span>Median county score</span></div>
+      <div class="stat"><b id="stat-median">&ndash;</b><span>Median score this year</span></div>
       <div class="stat"><b id="stat-n">&ndash;</b><span>Counties scored</span></div>
     </div>
     <div class="legend" id="legend">
-      <div class="legend-title">Score vs. national median &middot; each shade = 1 point</div>
+      <div class="legend-title">Score vs. <span id="ref-year"></span> national median &middot; each shade = 1 point</div>
       <div class="swatches" id="swatches"></div>
       <div class="ticks" id="ticks"></div>
-      <div class="legend-ends"><span>Below median</span><span>Above median</span></div>
+      <div class="legend-ends"><span>Below</span><span>At or above</span></div>
     </div>
   </div>
 
@@ -230,7 +230,7 @@
   </div>
 
   <footer>
-    <p>Colors compare each county with that year's national median county score: red is below it, blue is at or above it, and each shade is one point further away. The scores themselves use fixed 2010&ndash;12 goalposts, so a county's score can be compared across years. Rank is within the selected year (1 = healthiest). Alaska and Hawaii are moved and resized. Gray = not scored.</p>
+    <p>Colors compare every year with one fixed line, the <span class="ref-year"></span> national median county score (<span class="ref-val"></span>): red is below it, blue is at or above it, and each shade is one point further away. Because the line doesn't move, a map getting bluer or redder over time reflects real change. Scores use fixed 2010&ndash;12 goalposts, so they can be compared across years. Rank is within the selected year (1 = healthiest). Alaska and Hawaii are moved and resized. Gray = not scored.</p>
     <p>Sources: CDC WONDER (deaths), HRSA Area Health Resources File (physicians), Census SAHIE (insurance) and Population Estimates.</p>
   </footer>
 </div>
@@ -242,14 +242,19 @@ const DATA = {"years":[2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,20
 const YEARS = DATA.years;
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Diverging red -> blue centered on the selected year's national median county score.
-// Ten 1-point classes: the five reds are 0-1, 1-2, 2-3, 3-4 and 4+ points BELOW the median;
-// the five blues are 0-1 ... 4+ points AT OR ABOVE it. Lightness mirrors around the median.
+// Diverging red -> blue centered on ONE fixed reference: the latest year's national median
+// county score, applied to every year so the map shows real change over time.
+// Ten 1-point classes: the five reds are 0-1, 1-2, 2-3, 3-4 and 4+ points BELOW the reference;
+// the five blues are 0-1 ... 4+ points AT OR ABOVE it. Lightness mirrors around the reference.
 const COLORS = ["#8e1b1f", "#b52d2b", "#d6544a", "#ec8a78", "#f7c3b6",
                 "#c6dcf6", "#8fb9ee", "#4f92e0", "#2a6cc2", "#164a8f"];
-let median = 5;
+const REF_YEAR = YEARS[YEARS.length - 1];
+const median = d3.median(Object.values(DATA.v), v => v[0][YEARS.length - 1]);   // reference line
 const colorFor = s => (s == null || isNaN(s)) ? null
   : COLORS[Math.max(0, Math.min(9, Math.floor(s - median) + 5))];
+document.getElementById("ref-year").textContent = REF_YEAR;
+document.querySelectorAll(".ref-year").forEach(el => el.textContent = REF_YEAR);
+document.querySelectorAll(".ref-val").forEach(el => el.textContent = median.toFixed(2));
 const fmt = v => v == null ? "not scored" : v.toFixed(1);
 const vals = (fips, i) => {
   const v = DATA.v[fips];
@@ -265,12 +270,12 @@ function drawTicks() {
   [-4, -2, 0, 2, 4].forEach(off => {
     const cell = sw.children[5 + off], t = document.createElement("span");
     t.textContent = (median + off).toFixed(1);
-    if (off === 0) { t.className = "med"; t.textContent = median.toFixed(1) + " median"; }
+    if (off === 0) { t.className = "med"; t.textContent = median.toFixed(1) + " (" + REF_YEAR + ")"; }
     t.style.left = (cell.offsetLeft - sw.offsetLeft - 1) + "px";
     tk.appendChild(t);
   });
   document.getElementById("legend").setAttribute("aria-label",
-    `Color scale centered on the national median score of ${median.toFixed(1)}: red below, blue at or above, each shade one point`);
+    `Color scale centered on the ${REF_YEAR} national median score of ${median.toFixed(1)}: red below, blue at or above, each shade one point`);
 }
 window.addEventListener("resize", drawTicks);
 
@@ -322,17 +327,15 @@ function setYear(i, animate = true) {
   document.getElementById("year-label").textContent = y;
 
   const scores = DATA.counties.features.map(f => vals(f.properties.fips, yi).score).filter(s => s != null).sort(d3.ascending);
-  median = d3.quantile(scores, 0.5);
-  document.getElementById("stat-median").textContent = median.toFixed(1);
+  document.getElementById("stat-median").textContent = d3.quantile(scores, 0.5).toFixed(1);
   document.getElementById("stat-n").textContent = scores.length.toLocaleString();
   nScored = scores.length;
-  drawTicks();
 
   const t = (animate && !reduceMotion) ? counties.transition().duration(250) : counties;
   t.attr("fill", d => colorFor(vals(d.properties.fips, yi).score) || "var(--na)");
   counties.attr("aria-label", d => {
     const sc = vals(d.properties.fips, yi).score;
-    const side = sc == null ? "" : (sc >= median ? " (at or above median)" : " (below median)");
+    const side = sc == null ? "" : (sc >= median ? ` (at or above the ${REF_YEAR} median)` : ` (below the ${REF_YEAR} median)`);
     return `${d.properties.name}, ${d.properties.state}, ${y}: ${fmt(sc)}${side}`;
   });
 
@@ -364,7 +367,7 @@ function sparkline(fips) {
       <path d="${line}" fill="none" stroke="${tipInk}" stroke-opacity=".75" stroke-width="1.5" stroke-linejoin="round"/>
       ${cur == null ? "" : `<circle cx="${x(yi)}" cy="${y(cur)}" r="4" fill="${colorFor(cur)}" stroke="${tipInk}" stroke-width="1.5"/>`}
     </svg>
-    <div class="spark-cap"><span>${YEARS[0]}</span><span>score trend &middot; dashed = ${YEARS[yi]} median</span><span>${YEARS[YEARS.length - 1]}</span></div>`;
+    <div class="spark-cap"><span>${YEARS[0]}</span><span>trend &middot; dashed = ${REF_YEAR} median</span><span>${YEARS[YEARS.length - 1]}</span></div>`;
 }
 let lastXY = [0, 0];
 function show(d, x, y) {
@@ -376,7 +379,7 @@ function show(d, x, y) {
     <div class="score-row">
       ${c ? `<span class="chip" style="background:${c}"></span>` : ""}
       <span class="score">${fmt(v.score)}</span>
-      ${v.rank ? `<span class="of">rank ${v.rank.toLocaleString()} of ${nScored.toLocaleString()}<br>${v.score >= median ? "+" : "&minus;"}${Math.abs(v.score - median).toFixed(1)} vs. median</span>` : ""}
+      ${v.rank ? `<span class="of">rank ${v.rank.toLocaleString()} of ${nScored.toLocaleString()}<br>${v.score >= median ? "+" : "&minus;"}${Math.abs(v.score - median).toFixed(1)} vs. ${REF_YEAR} median</span>` : ""}
     </div>
     ${v.score == null ? "" : `<dl>
       <dt>Health outcomes</dt><dd>${fmt(v.outcomes)}</dd>
@@ -404,6 +407,7 @@ counties
   .on("blur", hide);
 svg.on("pointerdown", e => { if (e.target.tagName !== "path" || !e.target.classList.contains("county")) hide(); });
 
+drawTicks();
 setYear(yi, false);
 </script>
 
