@@ -95,15 +95,17 @@
   }
   .stat span { font-size: 12px; color: var(--ink-3); }
 
-  .legend { display: grid; gap: 4px; }
+  .legend { display: grid; gap: 4px; position: relative; }
   .legend-title { font-size: 12px; color: var(--ink-2); }
   .swatches { display: grid; grid-template-columns: repeat(10, 30px); height: 12px; gap: 2px; }
   .swatches i { display: block; border-radius: 2px; }
   .ticks {
-    display: flex; justify-content: space-between; width: 318px;
+    position: relative; height: 15px; width: 318px;
     font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; color: var(--ink-3);
     font-variant-numeric: tabular-nums;
   }
+  .ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .ticks span.med { color: var(--ink); font-weight: 600; }
   .legend-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); width: 318px; }
 
   .map-card {
@@ -208,11 +210,11 @@
       <div class="stat"><b id="stat-median">&ndash;</b><span>Median county score</span></div>
       <div class="stat"><b id="stat-n">&ndash;</b><span>Counties scored</span></div>
     </div>
-    <div class="legend" aria-label="Color scale from 0 (red, least healthy) to 10 (blue, healthiest)">
-      <div class="legend-title">Health index score</div>
+    <div class="legend" id="legend">
+      <div class="legend-title">Score vs. national median &middot; each shade = 1 point</div>
       <div class="swatches" id="swatches"></div>
       <div class="ticks" id="ticks"></div>
-      <div class="legend-ends"><span>Less healthy</span><span>Healthier</span></div>
+      <div class="legend-ends"><span>Below median</span><span>Above median</span></div>
     </div>
   </div>
 
@@ -228,7 +230,7 @@
   </div>
 
   <footer>
-    <p>Scores use fixed 2010&ndash;12 goalposts, so colors and scores are comparable across years. Rank is within the selected year (1 = healthiest). Alaska and Hawaii are moved and resized. Gray = not scored.</p>
+    <p>Colors compare each county with that year's national median county score: red is below it, blue is at or above it, and each shade is one point further away. The scores themselves use fixed 2010&ndash;12 goalposts, so a county's score can be compared across years. Rank is within the selected year (1 = healthiest). Alaska and Hawaii are moved and resized. Gray = not scored.</p>
     <p>Sources: CDC WONDER (deaths), HRSA Area Health Resources File (physicians), Census SAHIE (insurance) and Population Estimates.</p>
   </footer>
 </div>
@@ -240,10 +242,14 @@ const DATA = {"years":[2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,20
 const YEARS = DATA.years;
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// Diverging red -> blue in ten 1-point classes; lightness mirrors around 5 (colorblind-safe poles).
+// Diverging red -> blue centered on the selected year's national median county score.
+// Ten 1-point classes: the five reds are 0-1, 1-2, 2-3, 3-4 and 4+ points BELOW the median;
+// the five blues are 0-1 ... 4+ points AT OR ABOVE it. Lightness mirrors around the median.
 const COLORS = ["#8e1b1f", "#b52d2b", "#d6544a", "#ec8a78", "#f7c3b6",
                 "#c6dcf6", "#8fb9ee", "#4f92e0", "#2a6cc2", "#164a8f"];
-const colorFor = s => (s == null || isNaN(s)) ? null : COLORS[Math.min(9, Math.floor(s))];
+let median = 5;
+const colorFor = s => (s == null || isNaN(s)) ? null
+  : COLORS[Math.max(0, Math.min(9, Math.floor(s - median) + 5))];
 const fmt = v => v == null ? "not scored" : v.toFixed(1);
 const vals = (fips, i) => {
   const v = DATA.v[fips];
@@ -253,7 +259,20 @@ const vals = (fips, i) => {
 // Legend
 const sw = document.getElementById("swatches"), tk = document.getElementById("ticks");
 COLORS.forEach(c => { const el = document.createElement("i"); el.style.background = c; sw.appendChild(el); });
-[0, 2, 4, 6, 8, 10].forEach(v => { const t = document.createElement("span"); t.textContent = v; tk.appendChild(t); });
+// Tick labels at class boundaries: median - 4, - 2, median, + 2, + 4
+function drawTicks() {
+  tk.innerHTML = "";
+  [-4, -2, 0, 2, 4].forEach(off => {
+    const cell = sw.children[5 + off], t = document.createElement("span");
+    t.textContent = (median + off).toFixed(1);
+    if (off === 0) { t.className = "med"; t.textContent = median.toFixed(1) + " median"; }
+    t.style.left = (cell.offsetLeft - sw.offsetLeft - 1) + "px";
+    tk.appendChild(t);
+  });
+  document.getElementById("legend").setAttribute("aria-label",
+    `Color scale centered on the national median score of ${median.toFixed(1)}: red below, blue at or above, each shade one point`);
+}
+window.addEventListener("resize", drawTicks);
 
 // Map: geometry is already projected (Albers, km), so an identity transform with Y flipped.
 const W = 975, H = 610;
@@ -302,14 +321,20 @@ function setYear(i, animate = true) {
   next.disabled = yi === YEARS.length - 1;
   document.getElementById("year-label").textContent = y;
 
-  const t = (animate && !reduceMotion) ? counties.transition().duration(250) : counties;
-  t.attr("fill", d => colorFor(vals(d.properties.fips, yi).score) || "var(--na)");
-  counties.attr("aria-label", d => `${d.properties.name}, ${d.properties.state}, ${y}: ${fmt(vals(d.properties.fips, yi).score)}`);
-
   const scores = DATA.counties.features.map(f => vals(f.properties.fips, yi).score).filter(s => s != null).sort(d3.ascending);
-  document.getElementById("stat-median").textContent = d3.quantile(scores, 0.5).toFixed(1);
+  median = d3.quantile(scores, 0.5);
+  document.getElementById("stat-median").textContent = median.toFixed(1);
   document.getElementById("stat-n").textContent = scores.length.toLocaleString();
   nScored = scores.length;
+  drawTicks();
+
+  const t = (animate && !reduceMotion) ? counties.transition().duration(250) : counties;
+  t.attr("fill", d => colorFor(vals(d.properties.fips, yi).score) || "var(--na)");
+  counties.attr("aria-label", d => {
+    const sc = vals(d.properties.fips, yi).score;
+    const side = sc == null ? "" : (sc >= median ? " (at or above median)" : " (below median)");
+    return `${d.properties.name}, ${d.properties.state}, ${y}: ${fmt(sc)}${side}`;
+  });
 
   try { history.replaceState(null, "", "#" + y); } catch (e) { /* framed pages may refuse */ }
   if (hot && !tip.hidden) show(d3.select(hot).datum(), lastXY[0], lastXY[1]);
@@ -335,11 +360,11 @@ function sparkline(fips) {
   const cur = v[0][yi];
   const tipInk = getComputedStyle(tip).color;
   return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">
-      <line x1="${pad}" x2="${w - pad}" y1="${y(5)}" y2="${y(5)}" stroke="${tipInk}" stroke-opacity=".18" stroke-dasharray="2 3"/>
+      <line x1="${pad}" x2="${w - pad}" y1="${y(median)}" y2="${y(median)}" stroke="${tipInk}" stroke-opacity=".18" stroke-dasharray="2 3"/>
       <path d="${line}" fill="none" stroke="${tipInk}" stroke-opacity=".75" stroke-width="1.5" stroke-linejoin="round"/>
       ${cur == null ? "" : `<circle cx="${x(yi)}" cy="${y(cur)}" r="4" fill="${colorFor(cur)}" stroke="${tipInk}" stroke-width="1.5"/>`}
     </svg>
-    <div class="spark-cap"><span>${YEARS[0]}</span><span>score trend</span><span>${YEARS[YEARS.length - 1]}</span></div>`;
+    <div class="spark-cap"><span>${YEARS[0]}</span><span>score trend &middot; dashed = ${YEARS[yi]} median</span><span>${YEARS[YEARS.length - 1]}</span></div>`;
 }
 let lastXY = [0, 0];
 function show(d, x, y) {
@@ -351,7 +376,7 @@ function show(d, x, y) {
     <div class="score-row">
       ${c ? `<span class="chip" style="background:${c}"></span>` : ""}
       <span class="score">${fmt(v.score)}</span>
-      ${v.rank ? `<span class="of">rank ${v.rank.toLocaleString()} of ${nScored.toLocaleString()}</span>` : ""}
+      ${v.rank ? `<span class="of">rank ${v.rank.toLocaleString()} of ${nScored.toLocaleString()}<br>${v.score >= median ? "+" : "&minus;"}${Math.abs(v.score - median).toFixed(1)} vs. median</span>` : ""}
     </div>
     ${v.score == null ? "" : `<dl>
       <dt>Health outcomes</dt><dd>${fmt(v.outcomes)}</dd>

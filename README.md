@@ -5,6 +5,8 @@ An interactive map of a 0–10 health index for every U.S. county, 2010–2023:
 
 Pick a year from the dropdown (or use ← →). Hover over or tap a county to see its score, national rank, domain scores and 2010–2023 trend. Links like `#2015` open a specific year. Zoom with the buttons, a trackpad pinch, Ctrl/⌘ + scroll, or double-click. Drag to pan.
 
+**Colors** compare each county with that year's national median score: red is below the median, blue is at or above it, and each shade is one point further from it.
+
 ## What the score measures
 
 Two equally weighted domains, each scaled 0–10 against fixed 2010–2012 goalposts, so scores can be compared across years:
